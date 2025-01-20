@@ -4,6 +4,7 @@ class AudioButton {
   final String audioPath;
   final int color;
   final bool holdToPlay; // true = maintenir appuyé, false = jouer jusqu'à la fin
+  final bool loopMode; // Nouvelle propriété
 
   AudioButton({
     required this.id,
@@ -11,6 +12,7 @@ class AudioButton {
     required this.audioPath,
     required this.color,
     required this.holdToPlay,
+    required this.loopMode, // Ajout du paramètre
   });
 
   Map<String, dynamic> toMap() {
@@ -19,7 +21,8 @@ class AudioButton {
       'name': name,
       'audioPath': audioPath,
       'color': color,
-      'holdToPlay': holdToPlay,
+      'holdToPlay': holdToPlay ? 1 : 0,
+      'loopMode': loopMode ? 1 : 0, // Ajout dans la map
     };
   }
 
@@ -29,7 +32,8 @@ class AudioButton {
       name: map['name'],
       audioPath: map['audioPath'],
       color: map['color'],
-      holdToPlay: map['holdToPlay'],
+      holdToPlay: map['holdToPlay'] == 1,
+      loopMode: map['loopMode'] == 1, // Lecture depuis la map
     );
   }
 } 

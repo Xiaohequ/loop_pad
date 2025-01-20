@@ -17,7 +17,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (Database db, int version) async {
         await db.execute('''
           CREATE TABLE $tableName(
@@ -25,9 +25,15 @@ class DatabaseService {
             name TEXT NOT NULL,
             audioPath TEXT NOT NULL,
             color INTEGER NOT NULL,
-            holdToPlay INTEGER NOT NULL
+            holdToPlay INTEGER NOT NULL,
+            loopMode INTEGER NOT NULL DEFAULT 0
           )
         ''');
+      },
+      onUpgrade: (Database db, int oldVersion, int newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('ALTER TABLE $tableName ADD COLUMN loopMode INTEGER NOT NULL DEFAULT 0');
+        }
       },
     );
   }
@@ -42,6 +48,7 @@ class DatabaseService {
         'audioPath': button.audioPath,
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
+        'loopMode': button.loopMode ? 1 : 0,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -58,6 +65,7 @@ class DatabaseService {
         audioPath: maps[i]['audioPath'],
         color: maps[i]['color'],
         holdToPlay: maps[i]['holdToPlay'] == 1,
+        loopMode: maps[i]['loopMode'] == 1,
       );
     });
   }
@@ -85,6 +93,7 @@ class DatabaseService {
         'audioPath': button.audioPath,
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
+        'loopMode': button.loopMode ? 1 : 0,
       },
       where: 'id = ?',
       whereArgs: [button.id],

@@ -39,9 +39,9 @@ class SoundboardPage extends StatefulWidget {
 
 class _SoundboardPageState extends State<SoundboardPage> {
   final List<AudioButton> audioButtons = [];
-  final audioPlayer = AudioPlayer();
+  final Map<String, AudioPlayer> audioPlayers = {};
   final recorder = AudioRecorder();
-  String? currentlyPlayingId;
+  final Set<String> playingButtonIds = {};
   bool editingMode = false;
 
   @override
@@ -104,6 +104,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
     String buttonName = '';
     Color selectedColor = Colors.blue;
     bool holdToPlay = false;
+    bool loopMode = false;
 
     void changeColor(Color color) {
       selectedColor = color;
@@ -194,6 +195,17 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Lecture en boucle'),
+                subtitle: const Text('Le son se répète automatiquement'),
+                value: loopMode,
+                onChanged: (bool value) {
+                  setState(() {
+                    loopMode = value;
+                  });
+                },
+              ),
             ],
           ),
         ),
@@ -211,6 +223,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   audioPath: audioPath,
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
+                  loopMode: loopMode,
                 );
                 
                 DatabaseService.insertButton(newButton);
@@ -231,6 +244,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
     String buttonName = button.name;
     Color selectedColor = Color(button.color);
     bool holdToPlay = button.holdToPlay;
+    bool loopMode = button.loopMode;
 
     showDialog(
       context: context,
@@ -318,6 +332,17 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   ],
                 ),
               ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Lecture en boucle'),
+                subtitle: const Text('Le son se répète automatiquement'),
+                value: loopMode,
+                onChanged: (bool value) {
+                  setState(() {
+                    loopMode = value;
+                  });
+                },
+              ),
             ],
           ),
         ),
@@ -335,6 +360,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   audioPath: button.audioPath,
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
+                  loopMode: loopMode,
                 );
                 
                 await DatabaseService.updateButton(updatedButton);
@@ -391,6 +417,13 @@ class _SoundboardPageState extends State<SoundboardPage> {
     }
   }
 
+  AudioPlayer _getAudioPlayer(String buttonId) {
+    if (!audioPlayers.containsKey(buttonId)) {
+      audioPlayers[buttonId] = AudioPlayer();
+    }
+    return audioPlayers[buttonId]!;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -418,23 +451,31 @@ class _SoundboardPageState extends State<SoundboardPage> {
         itemBuilder: (context, index) {
           final button = audioButtons[index];
           return StreamBuilder<PlayerState>(
-            stream: audioPlayer.onPlayerStateChanged,
+            stream: _getAudioPlayer(button.id).onPlayerStateChanged,
             builder: (context, snapshot) {
-              final isPlaying = currentlyPlayingId == button.id && 
+              final isPlaying = playingButtonIds.contains(button.id) && 
                               snapshot.data == PlayerState.playing;
 
               return GestureDetector(
                 onTapDown: button.holdToPlay ? (_) async {
-                  setState(() => currentlyPlayingId = button.id);
-                  await audioPlayer.play(DeviceFileSource(button.audioPath));
+                  final player = _getAudioPlayer(button.id);
+                  setState(() => playingButtonIds.add(button.id));
+                  if (button.loopMode) {
+                    await player.setReleaseMode(ReleaseMode.loop);
+                  } else {
+                    await player.setReleaseMode(ReleaseMode.release);
+                  }
+                  await player.play(DeviceFileSource(button.audioPath));
                 } : null,
                 onTapUp: button.holdToPlay ? (_) async {
-                  await audioPlayer.stop();
-                  setState(() => currentlyPlayingId = null);
+                  final player = _getAudioPlayer(button.id);
+                  await player.stop();
+                  setState(() => playingButtonIds.remove(button.id));
                 } : null,
                 onTapCancel: button.holdToPlay ? () async {
-                  await audioPlayer.stop();
-                  setState(() => currentlyPlayingId = null);
+                  final player = _getAudioPlayer(button.id);
+                  await player.stop();
+                  setState(() => playingButtonIds.remove(button.id));
                 } : null,
                 child: Column(
                   mainAxisSize: MainAxisSize.max,
@@ -452,19 +493,25 @@ class _SoundboardPageState extends State<SoundboardPage> {
                             return;
                           }
 
+                          final player = _getAudioPlayer(button.id);
                           if (isPlaying) {
-                            await audioPlayer.stop();
-                            setState(() => currentlyPlayingId = null);
+                            await player.stop();
+                            setState(() => playingButtonIds.remove(button.id));
                           } else {
-                            setState(() => currentlyPlayingId = button.id);
-                            await audioPlayer.play(DeviceFileSource(button.audioPath));
-                            audioPlayer.onPlayerComplete.listen((_) {
-                              setState(() {
-                                if (currentlyPlayingId == button.id) {
-                                  currentlyPlayingId = null;
-                                }
+                            setState(() => playingButtonIds.add(button.id));
+                            if (button.loopMode) {
+                              await player.setReleaseMode(ReleaseMode.loop);
+                            } else {
+                              await player.setReleaseMode(ReleaseMode.release);
+                            }
+                            await player.play(DeviceFileSource(button.audioPath));
+                            if (!button.loopMode) {
+                              player.onPlayerComplete.listen((_) {
+                                setState(() {
+                                  playingButtonIds.remove(button.id);
+                                });
                               });
-                            });
+                            }
                           }
                         },
                         child: Column(
@@ -540,7 +587,9 @@ class _SoundboardPageState extends State<SoundboardPage> {
 
   @override
   void dispose() {
-    audioPlayer.dispose();
+    for (var player in audioPlayers.values) {
+      player.dispose();
+    }
     recorder.dispose();
     super.dispose();
   }
