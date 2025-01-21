@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
@@ -41,6 +44,7 @@ class SoundboardPage extends StatefulWidget {
 class _SoundboardPageState extends State<SoundboardPage> {
   final List<AudioButton> audioButtons = [];
   final Map<String, AudioPlayer> audioPlayers = {};
+  final Map<String, Completer> audioButtonPromise = {};
   final recorder = AudioRecorder();
   final Set<String> playingButtonIds = {};
   bool editingMode = false;
@@ -512,116 +516,154 @@ class _SoundboardPageState extends State<SoundboardPage> {
         final isPlaying = playingButtonIds.contains(button.id) && 
                         snapshot.data == PlayerState.playing;
 
+        Completer? stopSonCompleter;
         return GestureDetector(
+          behavior: HitTestBehavior.translucent,
           onTapDown: button.holdToPlay ? (_) async {
-            final player = _getAudioPlayer(button.id);
-            setState(() => playingButtonIds.add(button.id));
-            if (button.loopMode) {
-              await player.setReleaseMode(ReleaseMode.loop);
-            } else {
-              await player.setReleaseMode(ReleaseMode.release);
-            }
-            await player.play(DeviceFileSource(button.audioPath));
-          } : null,
-          onTapUp: button.holdToPlay ? (_) async {
-            final player = _getAudioPlayer(button.id);
-            await player.stop();
-            setState(() => playingButtonIds.remove(button.id));
+            await _playSound(button);
           } : null,
           onTapCancel: button.holdToPlay ? () async {
-            final player = _getAudioPlayer(button.id);
-            await player.stop();
-            setState(() => playingButtonIds.remove(button.id));
-          } : null,
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(button.color),
-                    padding: const EdgeInsets.all(8),
-                  ),
-                  onPressed: () async {
-                    if(button.holdToPlay){
-                      return;
-                    }
+            stopSonCompleter = Completer();
+            stopSonCompleter!.future.then((value) async{
+              await _stopSound(button);
+            }, onError: (e) => print(e));
 
-                    final player = _getAudioPlayer(button.id);
-                    if (isPlaying) {
-                      await player.stop();
-                      setState(() => playingButtonIds.remove(button.id));
-                    } else {
-                      setState(() => playingButtonIds.add(button.id));
-                      if (button.loopMode) {
-                        await player.setReleaseMode(ReleaseMode.loop);
-                      } else {
-                        await player.setReleaseMode(ReleaseMode.release);
-                      }
-                      await player.play(DeviceFileSource(button.audioPath));
-                      if (!button.loopMode) {
-                        player.onPlayerComplete.listen((_) {
-                          setState(() {
-                            playingButtonIds.remove(button.id);
-                          });
-                        });
-                      }
-                    }
-                  },
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if(!editingMode) ... [
-                        Icon(
-                          isPlaying ? Icons.stop_circle : Icons.play_circle,
-                          size: 24,
-                        ),
-                        const SizedBox(height: 4),
-                      ],
-                      Text(
-                        button.name,
-                        textAlign: TextAlign.center,
-                        overflow: TextOverflow.ellipsis,
+            await Future.delayed(const Duration(milliseconds: 50));
+            if(!stopSonCompleter!.isCompleted){
+              stopSonCompleter!.complete();
+            }
+          } : null,
+          onHorizontalDragStart: button.holdToPlay ? (details) async{
+            if(stopSonCompleter != null){
+              stopSonCompleter!.completeError("stop sound ignored");
+            }
+          }: null,
+          onVerticalDragStart: button.holdToPlay ? (details) async{
+            if(stopSonCompleter != null){
+              stopSonCompleter!.completeError("stop sound ignored");
+            }
+          }: null,
+          onHorizontalDragEnd: button.holdToPlay ? (details) async{
+            await _stopSound(button);
+          }: null,
+          onVerticalDragEnd: button.holdToPlay ? (details) async{
+            await _stopSound(button);
+          }: null,
+          child: Stack(
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.max,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Color(button.color),
+                        padding: const EdgeInsets.all(8),
                       ),
-                      if (button.holdToPlay)
-                        const Text(
-                          '(Maintenir)',
-                          style: TextStyle(fontSize: 10),
-                        ),
-                    ],
+                      onPressed: () async {
+                        if(button.holdToPlay){
+                          return;
+                        }
+                        if (isPlaying) {
+                          await _stopSound(button);
+                        } else {
+                          await _playSound(button);
+                        }
+                      },
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if(!editingMode) ... [
+                            Icon(
+                              isPlaying ? Icons.stop_circle : Icons.play_circle,
+                              size: 24,
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          Text(
+                            button.name,
+                            textAlign: TextAlign.center,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (button.holdToPlay)
+                            const Text(
+                              '(Maintenir)',
+                              style: TextStyle(fontSize: 10),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  if(editingMode) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, size: 20),
+                          onPressed: () => _showEditButtonDialog(button),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.blue.withOpacity(0.7),
+                            padding: const EdgeInsets.all(4),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, size: 20),
+                          onPressed: () => _deleteButton(button),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.red.withOpacity(0.7),
+                            padding: const EdgeInsets.all(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ]
+                ],
               ),
-              if(editingMode) ...[
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, size: 20),
-                      onPressed: () => _showEditButtonDialog(button),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.blue.withOpacity(0.7),
-                        padding: const EdgeInsets.all(4),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.delete, size: 20),
-                      onPressed: () => _deleteButton(button),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.red.withOpacity(0.7),
-                        padding: const EdgeInsets.all(4),
-                      ),
-                    ),
-                  ],
-                ),
+              if(button.loopMode) ...[
+                const Positioned(
+                  top: 8,
+                  right: 8,
+                  child: Icon(
+                    Icons.loop,
+                    color: Colors.white,
+                    size: 16,
+                  )
+                )
               ]
-            ],
+            ]
           ),
         );
       },
     );
+  }
+
+  _stopSound(AudioButton button) async {
+    print("_stopSound");
+    final player = _getAudioPlayer(button.id);
+    await player.stop();
+    setState(() => playingButtonIds.remove(button.id));
+  }
+
+  _playSound(AudioButton button) async {
+    final player = _getAudioPlayer(button.id);
+    setState(() => playingButtonIds.add(button.id));
+    if (button.loopMode) {
+      await player.setReleaseMode(ReleaseMode.loop);
+    } else {
+      await player.setReleaseMode(ReleaseMode.release);
+    }
+    await player.play(DeviceFileSource(button.audioPath));
+
+    //auto stop
+    if (!button.loopMode) {
+      player.onPlayerComplete.listen((_) {
+        setState(() {
+          playingButtonIds.remove(button.id);
+        });
+      });
+    }
   }
 
   @override
