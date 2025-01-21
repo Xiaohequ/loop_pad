@@ -17,7 +17,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (Database db, int version) async {
         await db.execute('''
           CREATE TABLE $tableName(
@@ -26,13 +26,26 @@ class DatabaseService {
             audioPath TEXT NOT NULL,
             color INTEGER NOT NULL,
             holdToPlay INTEGER NOT NULL,
-            loopMode INTEGER NOT NULL DEFAULT 0
+            loopMode INTEGER NOT NULL DEFAULT 0,
+            orderIndex INTEGER NOT NULL DEFAULT 0
           )
         ''');
       },
       onUpgrade: (Database db, int oldVersion, int newVersion) async {
         if (oldVersion < 2) {
           await db.execute('ALTER TABLE $tableName ADD COLUMN loopMode INTEGER NOT NULL DEFAULT 0');
+        }
+        if (oldVersion < 3) {
+          await db.execute('ALTER TABLE $tableName ADD COLUMN orderIndex INTEGER NOT NULL DEFAULT 0');
+          var buttons = await db.query(tableName, orderBy: 'rowid');
+          for (var i = 0; i < buttons.length; i++) {
+            await db.update(
+              tableName,
+              {'orderIndex': i},
+              where: 'id = ?',
+              whereArgs: [buttons[i]['id']],
+            );
+          }
         }
       },
     );
@@ -49,6 +62,7 @@ class DatabaseService {
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
         'loopMode': button.loopMode ? 1 : 0,
+        'orderIndex': button.orderIndex,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -56,17 +70,13 @@ class DatabaseService {
 
   static Future<List<AudioButton>> getButtons() async {
     final Database db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(tableName);
+    final List<Map<String, dynamic>> maps = await db.query(
+      tableName,
+      orderBy: 'orderIndex ASC',
+    );
 
     return List.generate(maps.length, (i) {
-      return AudioButton(
-        id: maps[i]['id'],
-        name: maps[i]['name'],
-        audioPath: maps[i]['audioPath'],
-        color: maps[i]['color'],
-        holdToPlay: maps[i]['holdToPlay'] == 1,
-        loopMode: maps[i]['loopMode'] == 1,
-      );
+      return AudioButton.fromMap(maps[i]);
     });
   }
 
@@ -94,9 +104,26 @@ class DatabaseService {
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
         'loopMode': button.loopMode ? 1 : 0,
+        'orderIndex': button.orderIndex,
       },
       where: 'id = ?',
       whereArgs: [button.id],
     );
+  }
+
+  static Future<void> updateButtonsOrder(List<AudioButton> buttons) async {
+    final Database db = await database;
+    final batch = db.batch();
+    
+    for (var i = 0; i < buttons.length; i++) {
+      batch.update(
+        tableName,
+        {'orderIndex': i},
+        where: 'id = ?',
+        whereArgs: [buttons[i].id],
+      );
+    }
+    
+    await batch.commit();
   }
 } 

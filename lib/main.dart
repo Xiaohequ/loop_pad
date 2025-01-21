@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import 'models/audio_button.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'services/database_service.dart';
@@ -113,6 +114,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
         title: const Text('Ajouter un nouveau son'),
         content: StatefulBuilder(
           builder: (context, setState) => Column(
@@ -224,6 +226,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
                   loopMode: loopMode,
+                  orderIndex: audioButtons.length
                 );
                 
                 DatabaseService.insertButton(newButton);
@@ -361,6 +364,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
                   loopMode: loopMode,
+                  orderIndex: audioButtons.length
                 );
                 
                 await DatabaseService.updateButton(updatedButton);
@@ -424,6 +428,19 @@ class _SoundboardPageState extends State<SoundboardPage> {
     return audioPlayers[buttonId]!;
   }
 
+  Future<void> _onReorder(int oldIndex, int newIndex) async {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+      final AudioButton item = audioButtons.removeAt(oldIndex);
+      audioButtons.insert(newIndex, item);
+    });
+    
+    // Mettre à jour l'ordre dans la base de données
+    await DatabaseService.updateButtonsOrder(audioButtons);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -440,132 +457,34 @@ class _SoundboardPageState extends State<SoundboardPage> {
           )
         ],
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(8),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
-        ),
-        itemCount: audioButtons.length,
-        itemBuilder: (context, index) {
-          final button = audioButtons[index];
-          return StreamBuilder<PlayerState>(
-            stream: _getAudioPlayer(button.id).onPlayerStateChanged,
-            builder: (context, snapshot) {
-              final isPlaying = playingButtonIds.contains(button.id) && 
-                              snapshot.data == PlayerState.playing;
-
-              return GestureDetector(
-                onTapDown: button.holdToPlay ? (_) async {
-                  final player = _getAudioPlayer(button.id);
-                  setState(() => playingButtonIds.add(button.id));
-                  if (button.loopMode) {
-                    await player.setReleaseMode(ReleaseMode.loop);
-                  } else {
-                    await player.setReleaseMode(ReleaseMode.release);
-                  }
-                  await player.play(DeviceFileSource(button.audioPath));
-                } : null,
-                onTapUp: button.holdToPlay ? (_) async {
-                  final player = _getAudioPlayer(button.id);
-                  await player.stop();
-                  setState(() => playingButtonIds.remove(button.id));
-                } : null,
-                onTapCancel: button.holdToPlay ? () async {
-                  final player = _getAudioPlayer(button.id);
-                  await player.stop();
-                  setState(() => playingButtonIds.remove(button.id));
-                } : null,
-                child: Column(
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color(button.color),
-                          padding: const EdgeInsets.all(8),
-                        ),
-                        onPressed: () async {
-                          if(button.holdToPlay){
-                            return;
-                          }
-
-                          final player = _getAudioPlayer(button.id);
-                          if (isPlaying) {
-                            await player.stop();
-                            setState(() => playingButtonIds.remove(button.id));
-                          } else {
-                            setState(() => playingButtonIds.add(button.id));
-                            if (button.loopMode) {
-                              await player.setReleaseMode(ReleaseMode.loop);
-                            } else {
-                              await player.setReleaseMode(ReleaseMode.release);
-                            }
-                            await player.play(DeviceFileSource(button.audioPath));
-                            if (!button.loopMode) {
-                              player.onPlayerComplete.listen((_) {
-                                setState(() {
-                                  playingButtonIds.remove(button.id);
-                                });
-                              });
-                            }
-                          }
-                        },
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              isPlaying ? Icons.stop_circle : Icons.play_circle,
-                              size: 24,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              button.name,
-                              textAlign: TextAlign.center,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (button.holdToPlay)
-                              const Text(
-                                '(Maintenir)',
-                                style: TextStyle(fontSize: 10),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if(editingMode) ...[
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, size: 20),
-                            onPressed: () => _showEditButtonDialog(button),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.blue.withOpacity(0.7),
-                              padding: const EdgeInsets.all(4),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, size: 20),
-                            onPressed: () => _deleteButton(button),
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.red.withOpacity(0.7),
-                              padding: const EdgeInsets.all(4),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ]
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
+      body: editingMode
+          ? ReorderableGridView.builder(
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: audioButtons.length,
+              itemBuilder: (context, index) {
+                final button = audioButtons[index];
+                return _buildButtonWidget(button, key: Key(button.id));
+              },
+              onReorder: _onReorder,
+              padding: const EdgeInsets.all(8),
+            )
+          : GridView.builder(
+              padding: const EdgeInsets.all(8),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: audioButtons.length,
+              itemBuilder: (context, index) {
+                final button = audioButtons[index];
+                return _buildButtonWidget(button, key: Key(button.id));
+              },
+            ),
       floatingActionButton: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -582,6 +501,126 @@ class _SoundboardPageState extends State<SoundboardPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildButtonWidget(AudioButton button, {Key? key}) {
+    return StreamBuilder<PlayerState>(
+      key: key,
+      stream: _getAudioPlayer(button.id).onPlayerStateChanged,
+      builder: (context, snapshot) {
+        final isPlaying = playingButtonIds.contains(button.id) && 
+                        snapshot.data == PlayerState.playing;
+
+        return GestureDetector(
+          onTapDown: button.holdToPlay ? (_) async {
+            final player = _getAudioPlayer(button.id);
+            setState(() => playingButtonIds.add(button.id));
+            if (button.loopMode) {
+              await player.setReleaseMode(ReleaseMode.loop);
+            } else {
+              await player.setReleaseMode(ReleaseMode.release);
+            }
+            await player.play(DeviceFileSource(button.audioPath));
+          } : null,
+          onTapUp: button.holdToPlay ? (_) async {
+            final player = _getAudioPlayer(button.id);
+            await player.stop();
+            setState(() => playingButtonIds.remove(button.id));
+          } : null,
+          onTapCancel: button.holdToPlay ? () async {
+            final player = _getAudioPlayer(button.id);
+            await player.stop();
+            setState(() => playingButtonIds.remove(button.id));
+          } : null,
+          child: Column(
+            mainAxisSize: MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Color(button.color),
+                    padding: const EdgeInsets.all(8),
+                  ),
+                  onPressed: () async {
+                    if(button.holdToPlay){
+                      return;
+                    }
+
+                    final player = _getAudioPlayer(button.id);
+                    if (isPlaying) {
+                      await player.stop();
+                      setState(() => playingButtonIds.remove(button.id));
+                    } else {
+                      setState(() => playingButtonIds.add(button.id));
+                      if (button.loopMode) {
+                        await player.setReleaseMode(ReleaseMode.loop);
+                      } else {
+                        await player.setReleaseMode(ReleaseMode.release);
+                      }
+                      await player.play(DeviceFileSource(button.audioPath));
+                      if (!button.loopMode) {
+                        player.onPlayerComplete.listen((_) {
+                          setState(() {
+                            playingButtonIds.remove(button.id);
+                          });
+                        });
+                      }
+                    }
+                  },
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if(!editingMode) ... [
+                        Icon(
+                          isPlaying ? Icons.stop_circle : Icons.play_circle,
+                          size: 24,
+                        ),
+                        const SizedBox(height: 4),
+                      ],
+                      Text(
+                        button.name,
+                        textAlign: TextAlign.center,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (button.holdToPlay)
+                        const Text(
+                          '(Maintenir)',
+                          style: TextStyle(fontSize: 10),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if(editingMode) ...[
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 20),
+                      onPressed: () => _showEditButtonDialog(button),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.blue.withOpacity(0.7),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, size: 20),
+                      onPressed: () => _deleteButton(button),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.red.withOpacity(0.7),
+                        padding: const EdgeInsets.all(4),
+                      ),
+                    ),
+                  ],
+                ),
+              ]
+            ],
+          ),
+        );
+      },
     );
   }
 
