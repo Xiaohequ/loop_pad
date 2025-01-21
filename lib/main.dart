@@ -25,7 +25,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Soundboard App',
+      title: 'Sound Pad',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -449,7 +449,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ma Soundboard'),
+        title: const Text('Sound Pad'),
         actions: [
           IconButton(
               onPressed: () {
