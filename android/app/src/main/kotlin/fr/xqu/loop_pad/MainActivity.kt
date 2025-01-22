@@ -1,4 +1,4 @@
-package com.example.loop_pad
+package fr.xqu.loop_pad
 
 import io.flutter.embedding.android.FlutterActivity
 
