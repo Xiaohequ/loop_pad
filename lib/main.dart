@@ -74,7 +74,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
         PlatformFile file = result.files.single;
         final String savedPath = await FileService.copyAudioToAppDirectory(file.path!);
         final String buttonName = file.name.replaceAll(RegExp(r'\.[^.]+$'), '');
-        _showAddButtonDialog(savedPath, buttonName: buttonName);
+        _showAddButtonDialog(savedPath, buttonName: buttonName, fileName: file.name);
       }
       else {
         for (PlatformFile file in result.files) {
@@ -86,6 +86,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
               id: DateTime.now().millisecondsSinceEpoch.toString(),
               name: buttonName,
               audioPath: savedPath,
+              fileName: file.name,
               color: Colors.blue.value,
               holdToPlay: false,
               loopMode: false,
@@ -133,7 +134,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
     }
   }
 
-  void _showAddButtonDialog(String audioPath, {String? buttonName}) {
+  void _showAddButtonDialog(String audioPath, {String? buttonName, String? fileName}) {
     buttonName ??= '';
     Color selectedColor = Colors.blue;
     bool holdToPlay = false;
@@ -152,6 +153,15 @@ class _SoundboardPageState extends State<SoundboardPage> {
                 decoration: const InputDecoration(labelText: 'Nom du bouton'),
                 controller: TextEditingController(text: buttonName),
                 onChanged: (value) => buttonName = value,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Fichier : $fileName',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
               ),
               const SizedBox(height: 16),
               Row(
@@ -252,6 +262,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   id: DateTime.now().toString(),
                   name: buttonName!,
                   audioPath: audioPath,
+                  fileName: fileName!,
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
                   loopMode: loopMode,
@@ -291,6 +302,15 @@ class _SoundboardPageState extends State<SoundboardPage> {
                 decoration: const InputDecoration(labelText: 'Nom du bouton'),
                 controller: TextEditingController(text: buttonName),
                 onChanged: (value) => buttonName = value,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Fichier : ${button.fileName}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
               ),
               const SizedBox(height: 16),
               Row(
@@ -391,6 +411,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   id: button.id,
                   name: buttonName,
                   audioPath: button.audioPath,
+                  fileName: button.fileName,
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
                   loopMode: loopMode,

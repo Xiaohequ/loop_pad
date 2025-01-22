@@ -17,13 +17,14 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (Database db, int version) async {
         await db.execute('''
           CREATE TABLE $tableName(
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             audioPath TEXT NOT NULL,
+            fileName TEXT NOT NULL,
             color INTEGER NOT NULL,
             holdToPlay INTEGER NOT NULL,
             loopMode INTEGER NOT NULL DEFAULT 0,
@@ -46,6 +47,9 @@ class DatabaseService {
               whereArgs: [buttons[i]['id']],
             );
           }
+        }
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE $tableName ADD COLUMN fileName TEXT NOT NULL DEFAULT ""');
         }
       },
     );
