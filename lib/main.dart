@@ -66,11 +66,39 @@ class _SoundboardPageState extends State<SoundboardPage> {
   Future<void> _addAudioFromFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.audio,
+      allowMultiple: true,
     );
 
     if (result != null) {
-      final String savedPath = await FileService.copyAudioToAppDirectory(result.files.single.path!);
-      _showAddButtonDialog(savedPath);
+      if(result.files.length == 1) {
+        PlatformFile file = result.files.single;
+        final String savedPath = await FileService.copyAudioToAppDirectory(file.path!);
+        final String buttonName = file.name.replaceAll(RegExp(r'\.[^.]+$'), '');
+        _showAddButtonDialog(savedPath, buttonName: buttonName);
+      }
+      else {
+        for (PlatformFile file in result.files) {
+          if (file.path != null) {
+            final String savedPath = await FileService.copyAudioToAppDirectory(file.path!);
+            final String buttonName = file.name.replaceAll(RegExp(r'\.[^.]+$'), '');
+
+            final newButton = AudioButton(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              name: buttonName,
+              audioPath: savedPath,
+              color: Colors.blue.value,
+              holdToPlay: false,
+              loopMode: false,
+              orderIndex: audioButtons.length,
+            );
+
+            await DatabaseService.insertButton(newButton);
+            setState(() {
+              audioButtons.add(newButton);
+            });
+          }
+        }
+      }
     }
   }
 
@@ -105,15 +133,11 @@ class _SoundboardPageState extends State<SoundboardPage> {
     }
   }
 
-  void _showAddButtonDialog(String audioPath) {
-    String buttonName = '';
+  void _showAddButtonDialog(String audioPath, {String? buttonName}) {
+    buttonName ??= '';
     Color selectedColor = Colors.blue;
     bool holdToPlay = false;
     bool loopMode = false;
-
-    void changeColor(Color color) {
-      selectedColor = color;
-    }
 
     showDialog(
       context: context,
@@ -126,6 +150,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
             children: [
               TextField(
                 decoration: const InputDecoration(labelText: 'Nom du bouton'),
+                controller: TextEditingController(text: buttonName),
                 onChanged: (value) => buttonName = value,
               ),
               const SizedBox(height: 16),
@@ -222,10 +247,10 @@ class _SoundboardPageState extends State<SoundboardPage> {
           ),
           TextButton(
             onPressed: () {
-              if (buttonName.isNotEmpty) {
+              if (buttonName!.isNotEmpty) {
                 final newButton = AudioButton(
                   id: DateTime.now().toString(),
-                  name: buttonName,
+                  name: buttonName!,
                   audioPath: audioPath,
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
@@ -256,6 +281,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        scrollable: true,
         title: const Text('Modifier le bouton'),
         content: StatefulBuilder(
           builder: (context, setState) => Column(
@@ -418,7 +444,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
       // Supprimer le fichier audio
       await FileService.deleteAudioFile(button.audioPath);
       // Supprimer le bouton de la base de données
-      await DatabaseService.deleteButton(button.id);
+      await DatabaseService.deleteButton(button.id!);
       setState(() {
         audioButtons.removeWhere((b) => b.id == button.id);
       });
@@ -447,6 +473,9 @@ class _SoundboardPageState extends State<SoundboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    // Calculer la hauteur nécessaire pour les boutons flottants plus une marge
+    final bottomPadding = MediaQuery.of(context).padding.bottom + 80.0; // 80.0 pour la hauteur des FAB + marge
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sound Pad'),
@@ -471,13 +500,13 @@ class _SoundboardPageState extends State<SoundboardPage> {
               itemCount: audioButtons.length,
               itemBuilder: (context, index) {
                 final button = audioButtons[index];
-                return _buildButtonWidget(button, key: Key(button.id));
+                return _buildButtonWidget(button, key: Key(button.id!));
               },
               onReorder: _onReorder,
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding),
             )
           : GridView.builder(
-              padding: const EdgeInsets.all(8),
+              padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 3,
                 crossAxisSpacing: 8,
@@ -486,7 +515,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
               itemCount: audioButtons.length,
               itemBuilder: (context, index) {
                 final button = audioButtons[index];
-                return _buildButtonWidget(button, key: Key(button.id));
+                return _buildButtonWidget(button, key: Key(button.id!));
               },
             ),
       floatingActionButton: Row(
@@ -511,7 +540,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
   Widget _buildButtonWidget(AudioButton button, {Key? key}) {
     return StreamBuilder<PlayerState>(
       key: key,
-      stream: _getAudioPlayer(button.id).onPlayerStateChanged,
+      stream: _getAudioPlayer(button.id!).onPlayerStateChanged,
       builder: (context, snapshot) {
         final isPlaying = playingButtonIds.contains(button.id) && 
                         snapshot.data == PlayerState.playing;
@@ -559,6 +588,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   Expanded(
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
+                        shape: BeveledRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(3))),
                         backgroundColor: Color(button.color),
                         padding: const EdgeInsets.all(8),
                       ),
@@ -579,6 +609,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                             Icon(
                               isPlaying ? Icons.stop_circle : Icons.play_circle,
                               size: 24,
+                              color: Colors.white,
                             ),
                             const SizedBox(height: 4),
                           ],
@@ -586,11 +617,13 @@ class _SoundboardPageState extends State<SoundboardPage> {
                             button.name,
                             textAlign: TextAlign.center,
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                            style: TextStyle(color: Colors.white),
                           ),
                           if (button.holdToPlay)
                             const Text(
                               '(Maintenir)',
-                              style: TextStyle(fontSize: 10),
+                              style: TextStyle(fontSize: 10, color: Colors.white),
                             ),
                         ],
                       ),
@@ -641,14 +674,14 @@ class _SoundboardPageState extends State<SoundboardPage> {
 
   _stopSound(AudioButton button) async {
     print("_stopSound");
-    final player = _getAudioPlayer(button.id);
+    final player = _getAudioPlayer(button.id!);
     await player.stop();
     setState(() => playingButtonIds.remove(button.id));
   }
 
   _playSound(AudioButton button) async {
-    final player = _getAudioPlayer(button.id);
-    setState(() => playingButtonIds.add(button.id));
+    final player = _getAudioPlayer(button.id!);
+    setState(() => playingButtonIds.add(button.id!));
     if (button.loopMode) {
       await player.setReleaseMode(ReleaseMode.loop);
     } else {

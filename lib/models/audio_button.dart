@@ -1,5 +1,7 @@
+import 'dart:ui';
+
 class AudioButton {
-  final String id;
+  final String? id;
   final String name;
   final String audioPath;
   final int color;
@@ -8,13 +10,13 @@ class AudioButton {
   final int orderIndex; // Nouvel attribut
 
   AudioButton({
-    required this.id,
+    this.id,
     required this.name,
     required this.audioPath,
-    required this.color,
-    required this.holdToPlay,
-    required this.loopMode,
-    required this.orderIndex,
+    this.color = 0,
+    this.holdToPlay = false,
+    this.loopMode = false,
+    this.orderIndex = 1,
   });
 
   Map<String, dynamic> toMap() {
