@@ -17,7 +17,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: (Database db, int version) async {
         await db.execute('''
           CREATE TABLE $tableName(
@@ -28,6 +28,8 @@ class DatabaseService {
             color INTEGER NOT NULL,
             holdToPlay INTEGER NOT NULL,
             loopMode INTEGER NOT NULL DEFAULT 0,
+            fadeOutEnabled INTEGER NOT NULL DEFAULT 0,
+            fadeOutDuration INTEGER NOT NULL DEFAULT 500,
             orderIndex INTEGER NOT NULL DEFAULT 0
           )
         ''');
@@ -50,6 +52,10 @@ class DatabaseService {
         }
         if (oldVersion < 4) {
           await db.execute('ALTER TABLE $tableName ADD COLUMN fileName TEXT NOT NULL DEFAULT ""');
+        }
+        if (oldVersion < 5) {
+          await db.execute('ALTER TABLE $tableName ADD COLUMN fadeOutEnabled INTEGER NOT NULL DEFAULT 0');
+          await db.execute('ALTER TABLE $tableName ADD COLUMN fadeOutDuration INTEGER NOT NULL DEFAULT 500');
         }
       },
     );
@@ -108,6 +114,8 @@ class DatabaseService {
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
         'loopMode': button.loopMode ? 1 : 0,
+        'fadeOutEnabled': button.fadeOutEnabled ? 1 : 0,
+        'fadeOutDuration': button.fadeOutDuration,
         'orderIndex': button.orderIndex,
       },
       where: 'id = ?',

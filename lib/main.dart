@@ -48,6 +48,9 @@ class _SoundboardPageState extends State<SoundboardPage> {
   final recorder = AudioRecorder();
   final Set<String> playingButtonIds = {};
   bool editingMode = false;
+  bool fadeOutEnabled = false;
+  int fadeOutDuration = 500;
+  final Map<String, Timer?> fadeTimers = {};
 
   @override
   void initState() {
@@ -74,7 +77,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
         PlatformFile file = result.files.single;
         final String savedPath = await FileService.copyAudioToAppDirectory(file.path!);
         final String buttonName = file.name.replaceAll(RegExp(r'\.[^.]+$'), '');
-        _showAddButtonDialog(savedPath, buttonName: buttonName, fileName: file.name);
+        _showButtonDialog(audioPath: savedPath, buttonName: buttonName, fileName: file.name);
       }
       else {
         for (PlatformFile file in result.files) {
@@ -121,7 +124,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                 Navigator.pop(context);
                 if (recordedPath != null) {
                   final String savedPath = await FileService.copyAudioToAppDirectory(recordedPath);
-                  _showAddButtonDialog(savedPath);
+                  _showButtonDialog(audioPath: savedPath);
                   // Supprimer le fichier temporaire
                   await FileService.deleteAudioFile(recordedPath);
                 }
@@ -134,17 +137,25 @@ class _SoundboardPageState extends State<SoundboardPage> {
     }
   }
 
-  void _showAddButtonDialog(String audioPath, {String? buttonName, String? fileName}) {
-    buttonName ??= '';
-    Color selectedColor = Colors.blue;
-    bool holdToPlay = false;
-    bool loopMode = false;
+  void _showButtonDialog({
+    required String audioPath,
+    String? buttonName,
+    String? fileName,
+    AudioButton? existingButton,  // null pour l'ajout, non-null pour l'édition
+  }) {
+    final bool isEditing = existingButton != null;
+    buttonName = isEditing ? existingButton.name : '';
+    Color selectedColor = isEditing ? Color(existingButton.color) : Colors.blue;
+    bool holdToPlay = isEditing ? existingButton.holdToPlay : false;
+    bool loopMode = isEditing ? existingButton.loopMode : false;
+    bool fadeOutEnabled = isEditing ? existingButton.fadeOutEnabled : false;
+    int fadeOutDuration = isEditing ? existingButton.fadeOutDuration : 500;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         scrollable: true,
-        title: const Text('Ajouter un nouveau son'),
+        title: Text(isEditing ? 'Modifier le bouton' : 'Ajouter un nouveau son'),
         content: StatefulBuilder(
           builder: (context, setState) => Column(
             mainAxisSize: MainAxisSize.min,
@@ -154,247 +165,25 @@ class _SoundboardPageState extends State<SoundboardPage> {
                 controller: TextEditingController(text: buttonName),
                 onChanged: (value) => buttonName = value,
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Fichier : $fileName',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: selectedColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey),
-                    ),
+              if (fileName != null) ... [
+                const SizedBox(height: 8),
+                Text(
+                  'Fichier : $fileName',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontStyle: FontStyle.italic,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              title: const Text('Choisir une couleur'),
-                              content: SingleChildScrollView(
-                                child: ColorPicker(
-                                  pickerColor: selectedColor,
-                                  onColorChanged: (Color color) {
-                                    setState(() {
-                                      selectedColor = color;
-                                    });
-                                  },
-                                  pickerAreaHeightPercent: 0.8,
-                                  enableAlpha: false,
-                                  displayThumbColor: true,
-                                  showLabel: false,
-                                  paletteType: PaletteType.hsvWithHue,
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: const Text('OK'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                      child: const Text('Choisir une couleur'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                title: const Text('Mode de lecture'),
-                subtitle: Column(
-                  children: [
-                    RadioListTile<bool>(
-                      title: const Text('Jouer jusqu\'à la fin'),
-                      value: false,
-                      groupValue: holdToPlay,
-                      onChanged: (value) => setState(() => holdToPlay = value!),
-                    ),
-                    RadioListTile<bool>(
-                      title: const Text('Maintenir appuyé pour jouer'),
-                      value: true,
-                      groupValue: holdToPlay,
-                      onChanged: (value) => setState(() => holdToPlay = value!),
-                    ),
-                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Lecture en boucle'),
-                subtitle: const Text('Le son se répète automatiquement'),
-                value: loopMode,
-                onChanged: (bool value) {
-                  setState(() {
-                    loopMode = value;
-                  });
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Annuler'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (buttonName!.isNotEmpty) {
-                final newButton = AudioButton(
-                  id: DateTime.now().toString(),
-                  name: buttonName!,
-                  audioPath: audioPath,
-                  fileName: fileName!,
-                  color: selectedColor.value,
-                  holdToPlay: holdToPlay,
-                  loopMode: loopMode,
-                  orderIndex: audioButtons.length
-                );
-                
-                DatabaseService.insertButton(newButton);
-                setState(() {
-                  audioButtons.add(newButton);
-                });
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Ajouter'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showEditButtonDialog(AudioButton button) {
-    String buttonName = button.name;
-    Color selectedColor = Color(button.color);
-    bool holdToPlay = button.holdToPlay;
-    bool loopMode = button.loopMode;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        scrollable: true,
-        title: const Text('Modifier le bouton'),
-        content: StatefulBuilder(
-          builder: (context, setState) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                decoration: const InputDecoration(labelText: 'Nom du bouton'),
-                controller: TextEditingController(text: buttonName),
-                onChanged: (value) => buttonName = value,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Fichier : ${button.fileName}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: selectedColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.grey),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              title: const Text('Choisir une couleur'),
-                              content: SingleChildScrollView(
-                                child: ColorPicker(
-                                  pickerColor: selectedColor,
-                                  onColorChanged: (Color color) {
-                                    setState(() {
-                                      selectedColor = color;
-                                    });
-                                  },
-                                  pickerAreaHeightPercent: 0.8,
-                                  enableAlpha: false,
-                                  displayThumbColor: true,
-                                  showLabel: false,
-                                  paletteType: PaletteType.hsvWithHue,
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    Navigator.of(context).pop();
-                                  },
-                                  child: const Text('OK'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                      child: const Text('Choisir une couleur'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                title: const Text('Mode de lecture'),
-                subtitle: Column(
-                  children: [
-                    RadioListTile<bool>(
-                      title: const Text('Jouer jusqu\'à la fin'),
-                      value: false,
-                      groupValue: holdToPlay,
-                      onChanged: (value) => setState(() => holdToPlay = value!),
-                    ),
-                    RadioListTile<bool>(
-                      title: const Text('Maintenir appuyé pour jouer'),
-                      value: true,
-                      groupValue: holdToPlay,
-                      onChanged: (value) => setState(() => holdToPlay = value!),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Lecture en boucle'),
-                subtitle: const Text('Le son se répète automatiquement'),
-                value: loopMode,
-                onChanged: (bool value) {
-                  setState(() {
-                    loopMode = value;
-                  });
-                },
+              ],
+              _buildColorPicker(selectedColor, (color) => setState(() => selectedColor = color)),
+              _buildPlayModeSelector(holdToPlay, (value) => setState(() => holdToPlay = value!)),
+              _buildLoopModeSwitch(loopMode, (value) => setState(() => loopMode = value)),
+              _buildFadeOutControls(
+                fadeOutEnabled,
+                fadeOutDuration,
+                (enabled) => setState(() => fadeOutEnabled = enabled),
+                (duration) => setState(() => fadeOutDuration = duration),
               ),
             ],
           ),
@@ -406,32 +195,168 @@ class _SoundboardPageState extends State<SoundboardPage> {
           ),
           TextButton(
             onPressed: () async {
-              if (buttonName.isNotEmpty) {
-                final updatedButton = AudioButton(
-                  id: button.id,
-                  name: buttonName,
-                  audioPath: button.audioPath,
-                  fileName: button.fileName,
+              if (buttonName!.isNotEmpty) {
+                final button = AudioButton(
+                  id: isEditing ? existingButton.id : DateTime.now().toString(),
+                  name: buttonName!,
+                  audioPath: isEditing ? existingButton.audioPath : audioPath,
+                  fileName: isEditing ? existingButton.fileName : fileName!,
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
                   loopMode: loopMode,
-                  orderIndex: audioButtons.length
+                  fadeOutEnabled: fadeOutEnabled,
+                  fadeOutDuration: fadeOutDuration,
+                  orderIndex: isEditing ? existingButton.orderIndex : audioButtons.length,
                 );
-                
-                await DatabaseService.updateButton(updatedButton);
-                setState(() {
-                  final index = audioButtons.indexWhere((b) => b.id == button.id);
-                  if (index != -1) {
-                    audioButtons[index] = updatedButton;
-                  }
-                });
+
+                if (isEditing) {
+                  await DatabaseService.updateButton(button);
+                  setState(() {
+                    final index = audioButtons.indexWhere((b) => b.id == button.id);
+                    if (index != -1) {
+                      audioButtons[index] = button;
+                    }
+                  });
+                } else {
+                  await DatabaseService.insertButton(button);
+                  setState(() {
+                    audioButtons.add(button);
+                  });
+                }
                 Navigator.pop(context);
               }
             },
-            child: const Text('Modifier'),
+            child: Text(isEditing ? 'Modifier' : 'Ajouter'),
           ),
         ],
       ),
+    );
+  }
+
+  // Widgets d'interface utilisateur extraits
+  Widget _buildColorPicker(Color selectedColor, void Function(Color) onColorChanged) {
+    return Column(
+      children: [
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: selectedColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => _showColorPickerDialog(selectedColor, onColorChanged),
+                child: const Text('Choisir une couleur'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  _showColorPickerDialog(Color selectedColor, void Function(Color) onColorChanged){
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Choisir une couleur'),
+          content: SingleChildScrollView(
+            child: ColorPicker(
+              pickerColor: selectedColor,
+              onColorChanged: onColorChanged,
+              pickerAreaHeightPercent: 0.8,
+              enableAlpha: false,
+              displayThumbColor: true,
+              showLabel: false,
+              paletteType: PaletteType.hsvWithHue,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPlayModeSelector(bool holdToPlay, void Function(bool?) onChanged) {
+    return ListTile(
+      title: const Text('Mode de lecture'),
+      subtitle: Column(
+        children: [
+          RadioListTile<bool>(
+            title: const Text('Jouer jusqu\'à la fin'),
+            value: false,
+            groupValue: holdToPlay,
+            onChanged: onChanged,
+          ),
+          RadioListTile<bool>(
+            title: const Text('Maintenir appuyé pour jouer'),
+            value: true,
+            groupValue: holdToPlay,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoopModeSwitch(bool loopMode, void Function(bool) onChanged) {
+    return SwitchListTile(
+      title: const Text('Lecture en boucle'),
+      subtitle: const Text('Le son se répète automatiquement'),
+      value: loopMode,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildFadeOutControls(
+    bool fadeOutEnabled,
+    int fadeOutDuration,
+    void Function(bool) onEnabledChanged,
+    void Function(int) onDurationChanged,
+  ) {
+    return Column(
+      children: [
+        SwitchListTile(
+          title: const Text('Fondu de sortie'),
+          subtitle: const Text('Le son s\'arrête progressivement'),
+          value: fadeOutEnabled,
+          onChanged: onEnabledChanged,
+        ),
+        if (fadeOutEnabled)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                const Text('Durée du fondu : '),
+                Expanded(
+                  child: Slider(
+                    value: fadeOutDuration.toDouble(),
+                    min: 100,
+                    max: 2000,
+                    divisions: 19,
+                    label: '${(fadeOutDuration / 1000).toStringAsFixed(1)}s',
+                    onChanged: (value) => onDurationChanged(value.round()),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -474,7 +399,19 @@ class _SoundboardPageState extends State<SoundboardPage> {
 
   AudioPlayer _getAudioPlayer(String buttonId) {
     if (!audioPlayers.containsKey(buttonId)) {
-      audioPlayers[buttonId] = AudioPlayer();
+      final player = AudioPlayer();
+
+      // Gérer la fin de la lecture
+      player.onPlayerComplete.listen((_) {
+        print("onPlayerComplete");
+        fadeTimers[buttonId]?.cancel();
+
+        setState(() {
+          playingButtonIds.remove(buttonId);
+        });
+      });
+
+      audioPlayers[buttonId] = player;
     }
     return audioPlayers[buttonId]!;
   }
@@ -573,12 +510,13 @@ class _SoundboardPageState extends State<SoundboardPage> {
             await _playSound(button);
           } : null,
           onTapCancel: button.holdToPlay ? () async {
+            // print("onTapCancel");
             stopSonCompleter = Completer();
             stopSonCompleter!.future.then((value) async{
               await _stopSound(button);
             }, onError: (e) => print(e));
 
-            await Future.delayed(const Duration(milliseconds: 50));
+            await Future.delayed(const Duration(milliseconds: 100));
             if(!stopSonCompleter!.isCompleted){
               stopSonCompleter!.complete();
             }
@@ -656,7 +594,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit, size: 20),
-                          onPressed: () => _showEditButtonDialog(button),
+                          onPressed: () => _showButtonDialog(audioPath: button.audioPath, existingButton: button),
                           style: IconButton.styleFrom(
                             backgroundColor: Colors.blue.withOpacity(0.7),
                             padding: const EdgeInsets.all(4),
@@ -693,14 +631,20 @@ class _SoundboardPageState extends State<SoundboardPage> {
     );
   }
 
-  _stopSound(AudioButton button) async {
+  Future<void> _stopSound(AudioButton button) async {
     print("_stopSound");
     final player = _getAudioPlayer(button.id!);
+    
+    if (button.fadeOutEnabled && player.state == PlayerState.playing) {
+      await _fadeOut(player, button);
+    }
+    
     await player.stop();
     setState(() => playingButtonIds.remove(button.id));
   }
 
   _playSound(AudioButton button) async {
+    print("_playSound");
     final player = _getAudioPlayer(button.id!);
     setState(() => playingButtonIds.add(button.id!));
     if (button.loopMode) {
@@ -708,20 +652,65 @@ class _SoundboardPageState extends State<SoundboardPage> {
     } else {
       await player.setReleaseMode(ReleaseMode.release);
     }
+    // Remettre le volume à sa valeur initiale pour la prochaine lecture
+    await player.setVolume(1.0);
     await player.play(DeviceFileSource(button.audioPath));
 
-    //auto stop
     if (!button.loopMode) {
-      player.onPlayerComplete.listen((_) {
-        setState(() {
-          playingButtonIds.remove(button.id);
-        });
+      // Obtenir la durée totale du son
+      Duration? duration = await player.getDuration();
+      if (duration != null && button.fadeOutEnabled) {
+        // Démarrer le fondu un peu avant la fin
+        int fadeStartTime = duration.inMilliseconds - button.fadeOutDuration;
+
+        await _fadeOut(player, button, fadeStartTime);
+      }
+    }
+  }
+
+  _fadeOut(AudioPlayer player, AudioButton button, [int? fadeStartTime]) async {
+    // Annuler le timer précédent s'il existe
+    fadeTimers[button.id]?.cancel();
+
+    // Attendre jusqu'au moment de démarrer le fondu
+    if(fadeStartTime != null){
+      fadeTimers[button.id!] = Timer(Duration(milliseconds: fadeStartTime), () async {
+        if(!playingButtonIds.contains(button.id)) return;
+        
+        await _executeFadeOut(player, button);
       });
+      return;
+    }
+
+    if(!playingButtonIds.contains(button.id)) return;
+    await _executeFadeOut(player, button);
+  }
+
+  Future<void> _executeFadeOut(AudioPlayer player, AudioButton button) async {
+    print("_fadeOut start");
+
+    // Calculer le pas de diminution
+    int steps = 10;
+    double currentVolume = await player.volume;
+    double volumeStep = currentVolume / steps;
+    int stepDuration = (button.fadeOutDuration / steps).ceil();
+
+    // Effectuer le fondu
+    for (int i = steps - 1; i >= 0; i--) {
+      if (!playingButtonIds.contains(button.id)) break;
+      await player.setVolume(volumeStep * i);
+      await Future.delayed(Duration(milliseconds: stepDuration));
     }
   }
 
   @override
   void dispose() {
+    // Annuler tous les timers en cours
+    for (var timer in fadeTimers.values) {
+      timer?.cancel();
+    }
+    fadeTimers.clear();
+    
     for (var player in audioPlayers.values) {
       player.dispose();
     }

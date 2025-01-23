@@ -8,6 +8,8 @@ class AudioButton {
   final int color;
   final bool holdToPlay; // true = maintenir appuyé, false = jouer jusqu'à la fin
   final bool loopMode; // Nouvelle propriété
+  final bool fadeOutEnabled;  // Nouveau champ
+  final int fadeOutDuration; // Durée en millisecondes
   final int orderIndex; // Nouvel attribut
 
   AudioButton({
@@ -18,6 +20,8 @@ class AudioButton {
     this.color = 0,
     this.holdToPlay = false,
     this.loopMode = false,
+    this.fadeOutEnabled = false,  // Par défaut désactivé
+    this.fadeOutDuration = 500,   // 500ms par défaut
     this.orderIndex = 1,
   });
 
@@ -30,6 +34,8 @@ class AudioButton {
       'color': color,
       'holdToPlay': holdToPlay ? 1 : 0,
       'loopMode': loopMode ? 1 : 0,
+      'fadeOutEnabled': fadeOutEnabled ? 1 : 0,
+      'fadeOutDuration': fadeOutDuration,
       'orderIndex': orderIndex,
     };
   }
@@ -43,6 +49,8 @@ class AudioButton {
       color: map['color'],
       holdToPlay: map['holdToPlay'] == 1,
       loopMode: map['loopMode'] == 1,
+      fadeOutEnabled: map['fadeOutEnabled'] == 1,
+      fadeOutDuration: map['fadeOutDuration'] ?? 500,
       orderIndex: map['orderIndex'] ?? 0,
     );
   }
