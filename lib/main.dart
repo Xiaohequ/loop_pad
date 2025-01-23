@@ -144,7 +144,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
     AudioButton? existingButton,  // null pour l'ajout, non-null pour l'édition
   }) {
     final bool isEditing = existingButton != null;
-    buttonName = isEditing ? existingButton.name : '';
+    buttonName = isEditing ? existingButton.name : buttonName ?? '';
     Color selectedColor = isEditing ? Color(existingButton.color) : Colors.blue;
     bool holdToPlay = isEditing ? existingButton.holdToPlay : false;
     bool loopMode = isEditing ? existingButton.loopMode : false;
@@ -200,7 +200,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
                   id: isEditing ? existingButton.id : DateTime.now().toString(),
                   name: buttonName!,
                   audioPath: isEditing ? existingButton.audioPath : audioPath,
-                  fileName: isEditing ? existingButton.fileName : fileName!,
+                  fileName: isEditing ? existingButton.fileName : fileName ?? '',
                   color: selectedColor.value,
                   holdToPlay: holdToPlay,
                   loopMode: loopMode,
