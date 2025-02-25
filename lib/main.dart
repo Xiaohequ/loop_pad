@@ -197,7 +197,7 @@ class _SoundboardPageState extends State<SoundboardPage> {
             onPressed: () async {
               if (buttonName!.isNotEmpty) {
                 final button = AudioButton(
-                  id: isEditing ? existingButton.id : DateTime.now().toString(),
+                  id: isEditing ? existingButton.id : DateTime.now().millisecondsSinceEpoch.toString(),
                   name: buttonName!,
                   audioPath: isEditing ? existingButton.audioPath : audioPath,
                   fileName: isEditing ? existingButton.fileName : fileName ?? '',

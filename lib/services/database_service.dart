@@ -69,6 +69,7 @@ class DatabaseService {
         'id': button.id,
         'name': button.name,
         'audioPath': button.audioPath,
+        'fileName': button.fileName,
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
         'loopMode': button.loopMode ? 1 : 0,
@@ -111,6 +112,7 @@ class DatabaseService {
       {
         'name': button.name,
         'audioPath': button.audioPath,
+        'fileName': button.fileName,
         'color': button.color,
         'holdToPlay': button.holdToPlay ? 1 : 0,
         'loopMode': button.loopMode ? 1 : 0,
