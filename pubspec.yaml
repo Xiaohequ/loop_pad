@@ -42,6 +42,7 @@ dependencies:
   sqflite: ^2.2.8+4
   reorderable_grid_view: ^2.2.8
   rename_app: ^1.6.2 #https://pub.dev/packages/rename_app
+  google_mobile_ads: ^3.1.0
 
 dev_dependencies:
   flutter_test:

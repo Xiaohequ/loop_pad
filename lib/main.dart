@@ -4,6 +4,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:record/record.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -15,6 +16,7 @@ import 'services/file_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MobileAds.instance.initialize();
   await DatabaseService.database;
   runApp(const MyApp());
 }
@@ -51,11 +53,32 @@ class _SoundboardPageState extends State<SoundboardPage> {
   bool fadeOutEnabled = false;
   int fadeOutDuration = 500;
   final Map<String, Timer?> fadeTimers = {};
+  BannerAd? _bannerAd;
+  bool _isAdLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _loadButtons();
+
+    //load ads
+    _bannerAd = BannerAd(
+      adUnitId: 'ca-app-pub-3940256099942544/6300978111', // ID de test
+      size: AdSize.banner,
+      request: AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (ad) {
+          setState(() {
+            _isAdLoaded = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+        },
+      ),
+    );
+
+    _bannerAd?.load();
   }
 
   Future<void> _loadButtons() async {
@@ -431,52 +454,34 @@ class _SoundboardPageState extends State<SoundboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Calculer la hauteur nécessaire pour les boutons flottants plus une marge
-    final bottomPadding = MediaQuery.of(context).padding.bottom + 80.0; // 80.0 pour la hauteur des FAB + marge
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sound Pad'),
         actions: [
-          IconButton(
-              onPressed: () {
-                setState(() {
-                  editingMode = !editingMode;
-                });
-              },
-              icon: editingMode ? const Icon(Icons.check) : const Icon(Icons.edit)
-          )
+          if(audioButtons.isNotEmpty)
+            IconButton(
+                onPressed: () {
+                  setState(() {
+                    editingMode = !editingMode;
+                  });
+                },
+                icon: editingMode ? const Icon(Icons.check) : const Icon(Icons.edit)
+            )
         ],
       ),
-      body: editingMode
-          ? ReorderableGridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemCount: audioButtons.length,
-              itemBuilder: (context, index) {
-                final button = audioButtons[index];
-                return _buildButtonWidget(button, key: Key(button.id!));
-              },
-              onReorder: _onReorder,
-              padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding),
-            )
-          : GridView.builder(
-              padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 8,
-                mainAxisSpacing: 8,
-              ),
-              itemCount: audioButtons.length,
-              itemBuilder: (context, index) {
-                final button = audioButtons[index];
-                return _buildButtonWidget(button, key: Key(button.id!));
-              },
+      body: Column(
+        children: [
+          if (_isAdLoaded)
+            SizedBox(
+              height: 40,
+              child: AdWidget(ad: _bannerAd!),
             ),
-      floatingActionButton: Row(
+            Expanded(
+              child: _buildMainPage(context)
+            )
+        ],
+      ),
+      floatingActionButton: audioButtons.isEmpty ? null : Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           FloatingActionButton(
@@ -492,6 +497,74 @@ class _SoundboardPageState extends State<SoundboardPage> {
           ),
         ],
       ),
+    );
+  }
+
+  _buildMainPage(BuildContext context) {
+    // Calculer la hauteur nécessaire pour les boutons flottants plus une marge
+    final bottomPadding = MediaQuery.of(context).padding.bottom + 80.0; // 80.0 pour la hauteur des FAB + marge
+
+    if(audioButtons.isEmpty){
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Aucun son disponible',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _addAudioFromFile,
+              icon: const Icon(Icons.audio_file),
+              label: const Text('Choisir un fichier audio'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _startRecording,
+              icon: const Icon(Icons.mic),
+              label: const Text('Enregistrer un son'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if(editingMode){
+      return ReorderableGridView.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+        ),
+        itemCount: audioButtons.length,
+        itemBuilder: (context, index) {
+          final button = audioButtons[index];
+          return _buildButtonWidget(button, key: Key(button.id!));
+        },
+        onReorder: _onReorder,
+        padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding),
+      );
+    }
+
+    return GridView.builder(
+      padding: EdgeInsets.fromLTRB(8, 8, 8, bottomPadding),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
+      ),
+      itemCount: audioButtons.length,
+      itemBuilder: (context, index) {
+        final button = audioButtons[index];
+        return _buildButtonWidget(button, key: Key(button.id!));
+      },
     );
   }
 
@@ -715,6 +788,8 @@ class _SoundboardPageState extends State<SoundboardPage> {
       player.dispose();
     }
     recorder.dispose();
+
+    _bannerAd?.dispose();
     super.dispose();
   }
 }
